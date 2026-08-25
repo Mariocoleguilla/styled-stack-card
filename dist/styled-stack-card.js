@@ -639,6 +639,57 @@ var o = s.litElementPolyfillSupport;
 o === null || o === void 0 || o({ LitElement: i });
 ((_s$litElementVersions = s.litElementVersions) !== null && _s$litElementVersions !== void 0 ? _s$litElementVersions : s.litElementVersions = []).push("4.2.2");
 //#endregion
+//#region src/presets.ts
+var customPresetsLoadingPromise = null;
+function loadCustomPresets() {
+	if (customPresetsLoadingPromise) return customPresetsLoadingPromise;
+	customPresetsLoadingPromise = new Promise((resolve) => {
+		if (window.StyledStackCustomPresets) {
+			resolve();
+			return;
+		}
+		const script = document.createElement("script");
+		script.src = `/local/styled-stack-card-presets/styled-stack-card-presets.js?t=${Date.now()}`;
+		script.type = "text/javascript";
+		script.onload = () => resolve();
+		script.onerror = () => resolve();
+		document.head.appendChild(script);
+	});
+	return customPresetsLoadingPromise;
+}
+function getGradientStyle(styleConfig) {
+	var _style$angle;
+	const style = styleConfig || {};
+	const presetKey = style.preset || "custom";
+	if (presetKey === "spotify") return `linear-gradient(135deg, rgba(17, 255, 0, 0.60) 0%, rgba(22, 119, 9, 0.60) 50%, rgba(0, 0, 0, 0.60) 100%)`;
+	if (presetKey === "lights") return `linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 0, 0.65) 50%, rgba(191, 99, 13, 0.65) 100%)`;
+	if (presetKey === "water") return `linear-gradient(135deg, rgba(0, 170, 255, 0.60) 0%, rgba(0, 119, 179, 0.80) 50%, rgba(255, 255, 255, 0.37) 100%)`;
+	if (presetKey === "alert") return `linear-gradient(135deg, rgba(255, 0, 0, 0.60) 0%, rgba(119, 9, 9, 0.60) 50%, rgba(46, 0, 0, 0.60) 100%)`;
+	const customPresets = window.StyledStackCustomPresets;
+	if (presetKey !== "custom" && customPresets && customPresets[presetKey]) {
+		var _custom$angle;
+		const custom = customPresets[presetKey];
+		const start = custom.color_start || "transparent";
+		const end = custom.color_end || "transparent";
+		const angle = (_custom$angle = custom.angle) !== null && _custom$angle !== void 0 ? _custom$angle : 135;
+		if (custom.color_mid) {
+			var _custom$color_mid_pos;
+			const midPos = (_custom$color_mid_pos = custom.color_mid_pos) !== null && _custom$color_mid_pos !== void 0 ? _custom$color_mid_pos : 50;
+			return `linear-gradient(${angle}deg, ${start} 0%, ${custom.color_mid} ${midPos}%, ${end} 100%)`;
+		}
+		return `linear-gradient(${angle}deg, ${start} 0%, ${end} 100%)`;
+	}
+	const start = style.color_start || "transparent";
+	const end = style.color_end || "transparent";
+	const angle = (_style$angle = style.angle) !== null && _style$angle !== void 0 ? _style$angle : 135;
+	if (style.color_mid) {
+		var _style$color_mid_pos;
+		const midPos = (_style$color_mid_pos = style.color_mid_pos) !== null && _style$color_mid_pos !== void 0 ? _style$color_mid_pos : 50;
+		return `linear-gradient(${angle}deg, ${start} 0%, ${style.color_mid} ${midPos}%, ${end} 100%)`;
+	}
+	return `linear-gradient(${angle}deg, ${start} 0%, ${end} 100%)`;
+}
+//#endregion
 //#region src/styled-stack-card.ts
 var StyledStackCard = class StyledStackCard extends i {
 	static get properties() {
@@ -651,6 +702,10 @@ var StyledStackCard = class StyledStackCard extends i {
 	constructor() {
 		super();
 		this._cards = [];
+	}
+	connectedCallback() {
+		super.connectedCallback();
+		loadCustomPresets().then(() => this.requestUpdate());
 	}
 	static async getConfigElement() {
 		await StyledStackCard.ensureHaEditorElements();
@@ -675,6 +730,7 @@ var StyledStackCard = class StyledStackCard extends i {
 	}
 	async setConfig(config) {
 		this.config = config;
+		loadCustomPresets().then(() => this.requestUpdate());
 		if (config.cards && Array.isArray(config.cards)) await this._createCards();
 		else this._cards = [];
 	}
@@ -688,20 +744,7 @@ var StyledStackCard = class StyledStackCard extends i {
 	}
 	getGradientStyle() {
 		var _this$config;
-		const style = ((_this$config = this.config) === null || _this$config === void 0 ? void 0 : _this$config.style_config) || {};
-		if (style.preset === "spotify") return `linear-gradient(135deg, rgba(17, 255, 0, 0.60) 0%, rgba(22, 119, 9, 0.60) 50%, rgba(0, 0, 0, 0.60) 100%)`;
-		if (style.preset === "lights") return `linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 0, 0.65) 50%, rgba(191, 99, 13, 0.65) 100%)`;
-		if (style.preset === "water") return `linear-gradient(135deg, rgba(0, 170, 255, 0.60) 0%, rgba(0, 119, 179, 0.80) 50%, rgba(255, 255, 255, 0.37) 100%)`;
-		if (style.preset === "alert") return `linear-gradient(135deg, rgba(255, 0, 0, 0.60) 0%, rgba(119, 9, 9, 0.60) 50%, rgba(46, 0, 0, 0.60) 100%)`;
-		const start = style.color_start || "transparent";
-		const end = style.color_end || "transparent";
-		const angle = style.angle || 135;
-		if (style.color_mid) {
-			var _style$color_mid_pos;
-			const midPos = (_style$color_mid_pos = style.color_mid_pos) !== null && _style$color_mid_pos !== void 0 ? _style$color_mid_pos : 50;
-			return `linear-gradient(${angle}deg, ${start} 0%, ${style.color_mid} ${midPos}%, ${end} 100%)`;
-		}
-		return `linear-gradient(${angle}deg, ${start} 0%, ${end} 100%)`;
+		return getGradientStyle((_this$config = this.config) === null || _this$config === void 0 ? void 0 : _this$config.style_config);
 	}
 	static getStubConfig() {
 		return {
@@ -773,28 +816,6 @@ var mdiDelete = "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0
 var mdiPlus = "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z";
 var mdiChevronLeft = "M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z";
 var mdiChevronRight = "M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z";
-var PRESET_OPTIONS = [
-	{
-		value: "custom",
-		label: "Colores manuales"
-	},
-	{
-		value: "spotify",
-		label: "Spotify"
-	},
-	{
-		value: "lights",
-		label: "Luces"
-	},
-	{
-		value: "water",
-		label: "Agua / Baño"
-	},
-	{
-		value: "alert",
-		label: "Alerta"
-	}
-];
 var StyledStackCardEditor = class extends i {
 	constructor(..._args) {
 		super(..._args);
@@ -820,6 +841,10 @@ var StyledStackCardEditor = class extends i {
 		var _this$_lovelace;
 		return (_this$_lovelace = this._lovelace) !== null && _this$_lovelace !== void 0 ? _this$_lovelace : ke();
 	}
+	connectedCallback() {
+		super.connectedCallback();
+		loadCustomPresets().then(() => this.requestUpdate());
+	}
 	setConfig(config) {
 		var _this$_config$cards$l, _this$_config$cards;
 		this._config = config !== null && config !== void 0 ? config : {
@@ -828,8 +853,10 @@ var StyledStackCardEditor = class extends i {
 		};
 		const numCards = (_this$_config$cards$l = (_this$_config$cards = this._config.cards) === null || _this$_config$cards === void 0 ? void 0 : _this$_config$cards.length) !== null && _this$_config$cards$l !== void 0 ? _this$_config$cards$l : 0;
 		if (this._selectedCard > numCards) this._selectedCard = numCards;
+		loadCustomPresets().then(() => this.requestUpdate());
 	}
 	async firstUpdated() {
+		loadCustomPresets().then(() => this.requestUpdate());
 		if (StyledStackCard && StyledStackCard.ensureHaEditorElements) await StyledStackCard.ensureHaEditorElements();
 	}
 	_updateConfig(newConfig) {
@@ -896,12 +923,44 @@ var StyledStackCardEditor = class extends i {
 			angle: Number((_style$angle = style.angle) !== null && _style$angle !== void 0 ? _style$angle : 135)
 		};
 	}
+	_getPresetOptions() {
+		const options = [
+			{
+				value: "custom",
+				label: "Colores manuales"
+			},
+			{
+				value: "spotify",
+				label: "Spotify"
+			},
+			{
+				value: "lights",
+				label: "Luces"
+			},
+			{
+				value: "water",
+				label: "Agua / Baño"
+			},
+			{
+				value: "alert",
+				label: "Alerta"
+			}
+		];
+		const customPresets = window.StyledStackCustomPresets;
+		if (customPresets && typeof customPresets === "object") Object.keys(customPresets).forEach((name) => {
+			if (!options.some((opt) => opt.value === name)) options.push({
+				value: name,
+				label: `✨ ${name}`
+			});
+		});
+		return options;
+	}
 	_presetSchema() {
 		return [{
 			name: "preset",
 			selector: { select: {
 				mode: "dropdown",
-				options: PRESET_OPTIONS
+				options: this._getPresetOptions()
 			} }
 		}];
 	}
@@ -1152,7 +1211,7 @@ var StyledStackCardEditor = class extends i {
 		this._selectedCard = target;
 	}
 	render() {
-		var _this$_hass$localize4, _this$_hass$localize5, _this$_hass3, _this$_hass$localize6, _this$_hass$localize7, _this$_hass4, _this$_hass$localize8, _this$_hass$localize9, _this$_hass5;
+		var _this$_config, _this$_hass$localize4, _this$_hass$localize5, _this$_hass3, _this$_hass$localize6, _this$_hass$localize7, _this$_hass4, _this$_hass$localize8, _this$_hass$localize9, _this$_hass5;
 		if (!this._config || !this._hass) return A;
 		const data = this._getStyleData();
 		const preset = data.preset;
@@ -1161,7 +1220,7 @@ var StyledStackCardEditor = class extends i {
 		const numCards = cards.length;
 		const isAdding = selected >= numCards;
 		const hasClipboard = this._getClipboardCard() !== null;
-		const gradientPreview = preset === "custom" ? data.has_mid ? `linear-gradient(${data.angle}deg, ${this._rgbToRgbaString(data.color_start_rgb, data.color_start_alpha)} 0%, ${this._rgbToRgbaString(data.color_mid_rgb, data.color_mid_alpha)} ${data.color_mid_pos}%, ${this._rgbToRgbaString(data.color_end_rgb, data.color_end_alpha)} 100%)` : `linear-gradient(${data.angle}deg, ${this._rgbToRgbaString(data.color_start_rgb, data.color_start_alpha)} 0%, ${this._rgbToRgbaString(data.color_end_rgb, data.color_end_alpha)} 100%)` : "";
+		const gradientPreview = getGradientStyle((_this$_config = this._config) === null || _this$_config === void 0 ? void 0 : _this$_config.style_config);
 		return b`
       <div class="card-config">
 
@@ -1173,6 +1232,14 @@ var StyledStackCardEditor = class extends i {
           .computeLabel=${this._computePresetLabel}
           @value-changed=${this._handlePresetChanged}
         ></ha-form>
+
+        <!-- Preview del degradado para presets no manuales -->
+        ${preset !== "custom" ? b`
+          <div class="gradient-preview-wrap" style="margin-bottom: 16px;">
+            <div class="gradient-preview" style="background:${gradientPreview}"></div>
+            <div class="gradient-preview-label">Vista previa del tema "${preset}"</div>
+          </div>
+        ` : A}
 
         <!-- SECCIÓN DE COLORES MANUALES -->
         ${preset === "custom" ? b`

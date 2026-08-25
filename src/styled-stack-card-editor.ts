@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing, CSSResultGroup } from 'lit';
 import { LovelaceCardConfig, getLovelace } from 'custom-card-helpers';
 import { StyledStackCard } from './styled-stack-card';
+import { loadCustomPresets, getGradientStyle } from './presets';
 
 const CLIPBOARD_KEY = 'dashboardCardClipboard';
 
@@ -30,14 +31,6 @@ interface StyledStackConfig extends LovelaceCardConfig {
   };
 }
 
-const PRESET_OPTIONS = [
-  { value: 'custom', label: 'Colores manuales' },
-  { value: 'spotify', label: 'Spotify' },
-  { value: 'lights', label: 'Luces' },
-  { value: 'water', label: 'Agua / Baño' },
-  { value: 'alert', label: 'Alerta' },
-];
-
 export class StyledStackCardEditor extends LitElement {
   private _config!: StyledStackConfig;
   private _hass: any;
@@ -65,15 +58,22 @@ export class StyledStackCardEditor extends LitElement {
     return this._lovelace ?? getLovelace();
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    loadCustomPresets().then(() => this.requestUpdate());
+  }
+
   public setConfig(config: StyledStackConfig) {
     this._config = config ?? ({ type: 'styled-stack-card', cards: [] } as StyledStackConfig);
     const numCards = this._config.cards?.length ?? 0;
     if (this._selectedCard > numCards) {
       this._selectedCard = numCards;
     }
+    loadCustomPresets().then(() => this.requestUpdate());
   }
 
   protected async firstUpdated() {
+    loadCustomPresets().then(() => this.requestUpdate());
     if (StyledStackCard && (StyledStackCard as any).ensureHaEditorElements) {
       await (StyledStackCard as any).ensureHaEditorElements();
     }
@@ -133,6 +133,30 @@ export class StyledStackCardEditor extends LitElement {
     };
   }
 
+  private _getPresetOptions() {
+    const options = [
+      { value: 'custom', label: 'Colores manuales' },
+      { value: 'spotify', label: 'Spotify' },
+      { value: 'lights', label: 'Luces' },
+      { value: 'water', label: 'Agua / Baño' },
+      { value: 'alert', label: 'Alerta' },
+    ];
+
+    const customPresets = (window as any).StyledStackCustomPresets;
+    if (customPresets && typeof customPresets === 'object') {
+      Object.keys(customPresets).forEach((name) => {
+        if (!options.some((opt) => opt.value === name)) {
+          options.push({
+            value: name,
+            label: `✨ ${name}`,
+          });
+        }
+      });
+    }
+
+    return options;
+  }
+
   private _presetSchema() {
     return [
       {
@@ -140,7 +164,7 @@ export class StyledStackCardEditor extends LitElement {
         selector: {
           select: {
             mode: 'dropdown',
-            options: PRESET_OPTIONS,
+            options: this._getPresetOptions(),
           },
         },
       },
@@ -197,8 +221,8 @@ export class StyledStackCardEditor extends LitElement {
     const newRgb = ev.detail.value as [number, number, number];
     const alpha =
       field === 'color_start' ? data.color_start_alpha
-        : field === 'color_mid' ? data.color_mid_alpha
-          : data.color_end_alpha;
+      : field === 'color_mid' ? data.color_mid_alpha
+      : data.color_end_alpha;
     this._handleColorChange(field, newRgb, alpha);
   }
 
@@ -208,8 +232,8 @@ export class StyledStackCardEditor extends LitElement {
     const data = this._getStyleData();
     const rgb =
       field === 'color_start' ? data.color_start_rgb
-        : field === 'color_mid' ? data.color_mid_rgb
-          : data.color_end_rgb;
+      : field === 'color_mid' ? data.color_mid_rgb
+      : data.color_end_rgb;
     this._handleColorChange(field, rgb, alpha);
   }
 
@@ -227,12 +251,10 @@ export class StyledStackCardEditor extends LitElement {
     const current = this._config.style_config || {};
     const hasMid = current.color_mid !== undefined;
     if (hasMid) {
-      // Eliminar color_mid y color_mid_pos
       const { color_mid, color_mid_pos, ...rest } = current as any;
       void color_mid; void color_mid_pos;
       this._updateConfig({ ...this._config, style_config: rest });
     } else {
-      // Añadir con valor por defecto
       this._updateConfig({
         ...this._config,
         style_config: {
@@ -425,11 +447,7 @@ export class StyledStackCardEditor extends LitElement {
     const isAdding = selected >= numCards;
     const hasClipboard = this._getClipboardCard() !== null;
 
-    const gradientPreview = preset === 'custom'
-      ? data.has_mid
-        ? `linear-gradient(${data.angle}deg, ${this._rgbToRgbaString(data.color_start_rgb, data.color_start_alpha)} 0%, ${this._rgbToRgbaString(data.color_mid_rgb, data.color_mid_alpha)} ${data.color_mid_pos}%, ${this._rgbToRgbaString(data.color_end_rgb, data.color_end_alpha)} 100%)`
-        : `linear-gradient(${data.angle}deg, ${this._rgbToRgbaString(data.color_start_rgb, data.color_start_alpha)} 0%, ${this._rgbToRgbaString(data.color_end_rgb, data.color_end_alpha)} 100%)`
-      : '';
+    const gradientPreview = getGradientStyle(this._config?.style_config);
 
     return html`
       <div class="card-config">
@@ -442,6 +460,14 @@ export class StyledStackCardEditor extends LitElement {
           .computeLabel=${this._computePresetLabel}
           @value-changed=${this._handlePresetChanged}
         ></ha-form>
+
+        <!-- Preview del degradado para presets no manuales -->
+        ${preset !== 'custom' ? html`
+          <div class="gradient-preview-wrap" style="margin-bottom: 16px;">
+            <div class="gradient-preview" style="background:${gradientPreview}"></div>
+            <div class="gradient-preview-label">Vista previa del tema "${preset}"</div>
+          </div>
+        ` : nothing}
 
         <!-- SECCIÓN DE COLORES MANUALES -->
         ${preset === 'custom' ? html`
@@ -495,10 +521,10 @@ export class StyledStackCardEditor extends LitElement {
 
         <!-- CONTENIDO DEL EDITOR -->
         ${isAdding
-        ? html`
+          ? html`
               <div id="editor">
                 ${hasClipboard
-            ? html`
+                  ? html`
                       <div class="paste-bar">
                         <button class="btn-paste" @click=${this._handlePasteCard}>
                           <ha-icon .path=${mdiContentPaste}></ha-icon>
@@ -506,7 +532,7 @@ export class StyledStackCardEditor extends LitElement {
                         </button>
                       </div>
                     `
-            : nothing}
+                  : nothing}
                 <hui-card-picker
                   .hass=${this._hass}
                   .lovelace=${this._effectiveLovelace}
@@ -514,8 +540,8 @@ export class StyledStackCardEditor extends LitElement {
                 ></hui-card-picker>
               </div>
             `
-        : numCards > 0
-          ? html`
+          : numCards > 0
+            ? html`
                 <div id="card-options">
                   <ha-icon-button
                     .path=${mdiChevronLeft}
@@ -555,7 +581,7 @@ export class StyledStackCardEditor extends LitElement {
                   ></hui-card-element-editor>
                 </div>
               `
-          : nothing}
+            : nothing}
       </div>
     `;
   }

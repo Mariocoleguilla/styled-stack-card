@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { HomeAssistant, LovelaceCardConfig } from 'custom-card-helpers';
+import { loadCustomPresets, getGradientStyle } from './presets';
 
 interface StyledStackConfig extends LovelaceCardConfig {
   cards?: any[];
@@ -29,6 +30,11 @@ export class StyledStackCard extends LitElement {
   constructor() {
     super();
     this._cards = [];
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    loadCustomPresets().then(() => this.requestUpdate());
   }
 
   public static async getConfigElement() {
@@ -69,6 +75,7 @@ export class StyledStackCard extends LitElement {
 
   async setConfig(config: StyledStackConfig) {
     this.config = config;
+    loadCustomPresets().then(() => this.requestUpdate());
     if (config.cards && Array.isArray(config.cards)) {
       await this._createCards();
     } else {
@@ -91,23 +98,7 @@ export class StyledStackCard extends LitElement {
   }
 
   private getGradientStyle() {
-    const style = this.config?.style_config || {};
-
-    if (style.preset === 'spotify') return `linear-gradient(135deg, rgba(17, 255, 0, 0.60) 0%, rgba(22, 119, 9, 0.60) 50%, rgba(0, 0, 0, 0.60) 100%)`;
-    if (style.preset === 'lights') return `linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 0, 0.65) 50%, rgba(191, 99, 13, 0.65) 100%)`;
-    if (style.preset === 'water') return `linear-gradient(135deg, rgba(0, 170, 255, 0.60) 0%, rgba(0, 119, 179, 0.80) 50%, rgba(255, 255, 255, 0.37) 100%)`;
-    if (style.preset === 'alert') return `linear-gradient(135deg, rgba(255, 0, 0, 0.60) 0%, rgba(119, 9, 9, 0.60) 50%, rgba(46, 0, 0, 0.60) 100%)`;
-
-    const start = style.color_start || 'transparent';
-    const end = style.color_end || 'transparent';
-    const angle = style.angle || 135;
-
-    if (style.color_mid) {
-      const midPos = style.color_mid_pos ?? 50;
-      return `linear-gradient(${angle}deg, ${start} 0%, ${style.color_mid} ${midPos}%, ${end} 100%)`;
-    }
-
-    return `linear-gradient(${angle}deg, ${start} 0%, ${end} 100%)`;
+    return getGradientStyle(this.config?.style_config);
   }
 
   // Configuración por defecto para el buscador de tarjetas
