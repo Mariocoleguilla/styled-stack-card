@@ -33,6 +33,18 @@
 
 ---
 
+## 🔌 Custom Presets (Integration Companion)
+
+To get the most out of your card, install the custom integration:
+👉 **[Styled Stack Card Manager](https://github.com/Mariocoleguilla/styled-stack-card-manager)**
+
+This integration adds a **sidebar panel** inside Home Assistant where you can:
+* 🎨 Create and design custom gradient presets visually.
+* 💾 Save them to disk securely.
+* ⚡ **Sync in real-time**: Newly created presets appear instantly in the visual card editor preset dropdown list without reloading your dashboard or clearing cache!
+
+---
+
 ## ✨ Features
 
 | | Feature |
