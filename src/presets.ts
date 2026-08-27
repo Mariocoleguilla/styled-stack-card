@@ -1,20 +1,33 @@
 let customPresetsLoadingPromise: Promise<void> | null = null;
 
-export function loadCustomPresets(): Promise<void> {
-  if (customPresetsLoadingPromise) {
-    return customPresetsLoadingPromise;
+export function loadCustomPresets(force: boolean = false): Promise<void> {
+  if (force) {
+    customPresetsLoadingPromise = null;
+    const oldScript = document.querySelector('script[src*="styled-stack-card-presets.js"]');
+    if (oldScript) {
+      oldScript.remove();
+    }
+  } else {
+    if ((window as any).StyledStackCustomPresets) {
+      return Promise.resolve();
+    }
+    if (customPresetsLoadingPromise) {
+      return customPresetsLoadingPromise;
+    }
   }
 
   customPresetsLoadingPromise = new Promise((resolve) => {
-    if ((window as any).StyledStackCustomPresets) {
-      resolve();
-      return;
-    }
-
     const script = document.createElement('script');
     script.src = `/local/styled-stack-card-presets/styled-stack-card-presets.js?t=${Date.now()}`;
     script.type = 'text/javascript';
-    script.onload = () => resolve();
+    script.onload = () => {
+      window.dispatchEvent(
+        new CustomEvent('styled-stack-card-presets-updated', {
+          detail: (window as any).StyledStackCustomPresets,
+        })
+      );
+      resolve();
+    };
     script.onerror = () => resolve();
     document.head.appendChild(script);
   });

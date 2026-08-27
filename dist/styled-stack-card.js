@@ -641,17 +641,23 @@ o === null || o === void 0 || o({ LitElement: i });
 //#endregion
 //#region src/presets.ts
 var customPresetsLoadingPromise = null;
-function loadCustomPresets() {
-	if (customPresetsLoadingPromise) return customPresetsLoadingPromise;
+function loadCustomPresets(force = false) {
+	if (force) {
+		customPresetsLoadingPromise = null;
+		const oldScript = document.querySelector("script[src*=\"styled-stack-card-presets.js\"]");
+		if (oldScript) oldScript.remove();
+	} else {
+		if (window.StyledStackCustomPresets) return Promise.resolve();
+		if (customPresetsLoadingPromise) return customPresetsLoadingPromise;
+	}
 	customPresetsLoadingPromise = new Promise((resolve) => {
-		if (window.StyledStackCustomPresets) {
-			resolve();
-			return;
-		}
 		const script = document.createElement("script");
 		script.src = `/local/styled-stack-card-presets/styled-stack-card-presets.js?t=${Date.now()}`;
 		script.type = "text/javascript";
-		script.onload = () => resolve();
+		script.onload = () => {
+			window.dispatchEvent(new CustomEvent("styled-stack-card-presets-updated", { detail: window.StyledStackCustomPresets }));
+			resolve();
+		};
 		script.onerror = () => resolve();
 		document.head.appendChild(script);
 	});
@@ -702,10 +708,22 @@ var StyledStackCard = class StyledStackCard extends i {
 	constructor() {
 		super();
 		this._cards = [];
+		this._boundPresetsUpdated = () => {
+			loadCustomPresets(true).then(() => this.requestUpdate());
+		};
 	}
 	connectedCallback() {
 		super.connectedCallback();
 		loadCustomPresets().then(() => this.requestUpdate());
+		window.addEventListener("styled-stack-card-presets-updated", this._boundPresetsUpdated);
+	}
+	disconnectedCallback() {
+		super.disconnectedCallback();
+		window.removeEventListener("styled-stack-card-presets-updated", this._boundPresetsUpdated);
+		if (this._unsubPresets) {
+			this._unsubPresets();
+			this._unsubPresets = void 0;
+		}
 	}
 	static async getConfigElement() {
 		await StyledStackCard.ensureHaEditorElements();
@@ -720,10 +738,20 @@ var StyledStackCard = class StyledStackCard extends i {
 		await customElements.whenDefined("hui-card-element-editor");
 	}
 	set hass(hass) {
+		const oldHass = this._hass;
 		this._hass = hass;
 		if (this._cards) this._cards.forEach((card) => {
 			card.hass = hass;
 		});
+		if (hass && !oldHass && hass.connection && !this._unsubPresets) try {
+			hass.connection.subscribeEvents((ev) => {
+				var _ev$data;
+				if ((_ev$data = ev.data) === null || _ev$data === void 0 ? void 0 : _ev$data.presets) window.StyledStackCustomPresets = ev.data.presets;
+				loadCustomPresets(true).then(() => this.requestUpdate());
+			}, "styled_stack_card_presets_updated").then((unsub) => {
+				this._unsubPresets = unsub;
+			});
+		} catch (e) {}
 	}
 	get hass() {
 		return this._hass;
@@ -820,6 +848,9 @@ var StyledStackCardEditor = class extends i {
 	constructor(..._args) {
 		super(..._args);
 		this._selectedCard = 0;
+		this._boundPresetsUpdated = () => {
+			loadCustomPresets(true).then(() => this.requestUpdate());
+		};
 		this._computePresetLabel = (schema) => schema.name === "preset" ? "Tema visual" : schema.name;
 		this._computeAngleLabel = (schema) => schema.name === "angle" ? "Ángulo del degradado" : schema.name;
 	}
@@ -832,7 +863,30 @@ var StyledStackCardEditor = class extends i {
 		};
 	}
 	set hass(hass) {
+		const oldHass = this._hass;
 		this._hass = hass;
+		if (hass && !oldHass && hass.connection && !this._unsubPresets) try {
+			hass.connection.subscribeEvents((ev) => {
+				var _ev$data;
+				if ((_ev$data = ev.data) === null || _ev$data === void 0 ? void 0 : _ev$data.presets) window.StyledStackCustomPresets = ev.data.presets;
+				loadCustomPresets(true).then(() => this.requestUpdate());
+			}, "styled_stack_card_presets_updated").then((unsub) => {
+				this._unsubPresets = unsub;
+			});
+		} catch (e) {}
+	}
+	connectedCallback() {
+		super.connectedCallback();
+		loadCustomPresets().then(() => this.requestUpdate());
+		window.addEventListener("styled-stack-card-presets-updated", this._boundPresetsUpdated);
+	}
+	disconnectedCallback() {
+		super.disconnectedCallback();
+		window.removeEventListener("styled-stack-card-presets-updated", this._boundPresetsUpdated);
+		if (this._unsubPresets) {
+			this._unsubPresets();
+			this._unsubPresets = void 0;
+		}
 	}
 	set lovelace(lovelace) {
 		this._lovelace = lovelace;
@@ -840,10 +894,6 @@ var StyledStackCardEditor = class extends i {
 	get _effectiveLovelace() {
 		var _this$_lovelace;
 		return (_this$_lovelace = this._lovelace) !== null && _this$_lovelace !== void 0 ? _this$_lovelace : ke();
-	}
-	connectedCallback() {
-		super.connectedCallback();
-		loadCustomPresets().then(() => this.requestUpdate());
 	}
 	setConfig(config) {
 		var _this$_config$cards$l, _this$_config$cards;

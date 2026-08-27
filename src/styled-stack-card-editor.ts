@@ -46,8 +46,41 @@ export class StyledStackCardEditor extends LitElement {
     };
   }
 
+  private _unsubPresets?: () => void;
+  private _boundPresetsUpdated = () => {
+    loadCustomPresets(true).then(() => this.requestUpdate());
+  };
+
   set hass(hass: any) {
+    const oldHass = this._hass;
     this._hass = hass;
+    if (hass && !oldHass && hass.connection && !this._unsubPresets) {
+      try {
+        hass.connection.subscribeEvents((ev: any) => {
+          if (ev.data?.presets) {
+            (window as any).StyledStackCustomPresets = ev.data.presets;
+          }
+          loadCustomPresets(true).then(() => this.requestUpdate());
+        }, "styled_stack_card_presets_updated").then((unsub: any) => {
+          this._unsubPresets = unsub;
+        });
+      } catch (e) {}
+    }
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    loadCustomPresets().then(() => this.requestUpdate());
+    window.addEventListener("styled-stack-card-presets-updated", this._boundPresetsUpdated);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    window.removeEventListener("styled-stack-card-presets-updated", this._boundPresetsUpdated);
+    if (this._unsubPresets) {
+      this._unsubPresets();
+      this._unsubPresets = undefined;
+    }
   }
 
   set lovelace(lovelace: any) {
@@ -58,10 +91,7 @@ export class StyledStackCardEditor extends LitElement {
     return this._lovelace ?? getLovelace();
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    loadCustomPresets().then(() => this.requestUpdate());
-  }
+
 
   public setConfig(config: StyledStackConfig) {
     this._config = config ?? ({ type: 'styled-stack-card', cards: [] } as StyledStackConfig);
