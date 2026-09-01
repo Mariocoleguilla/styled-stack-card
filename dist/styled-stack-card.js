@@ -707,9 +707,10 @@ var StyledStackCard = class StyledStackCard extends i {
 	}
 	constructor() {
 		super();
+		this._isSubscribingPresets = false;
 		this._cards = [];
 		this._boundPresetsUpdated = () => {
-			loadCustomPresets(true).then(() => this.requestUpdate());
+			this.requestUpdate();
 		};
 	}
 	connectedCallback() {
@@ -724,6 +725,7 @@ var StyledStackCard = class StyledStackCard extends i {
 			this._unsubPresets();
 			this._unsubPresets = void 0;
 		}
+		this._isSubscribingPresets = false;
 	}
 	static async getConfigElement() {
 		await StyledStackCard.ensureHaEditorElements();
@@ -743,15 +745,23 @@ var StyledStackCard = class StyledStackCard extends i {
 		if (this._cards) this._cards.forEach((card) => {
 			card.hass = hass;
 		});
-		if (hass && !oldHass && hass.connection && !this._unsubPresets) try {
-			hass.connection.subscribeEvents((ev) => {
-				var _ev$data;
-				if ((_ev$data = ev.data) === null || _ev$data === void 0 ? void 0 : _ev$data.presets) window.StyledStackCustomPresets = ev.data.presets;
-				loadCustomPresets(true).then(() => this.requestUpdate());
-			}, "styled_stack_card_presets_updated").then((unsub) => {
-				this._unsubPresets = unsub;
-			});
-		} catch (e) {}
+		if (hass && !oldHass && hass.connection && !this._unsubPresets && !this._isSubscribingPresets) {
+			this._isSubscribingPresets = true;
+			try {
+				hass.connection.subscribeEvents((ev) => {
+					var _ev$data;
+					if ((_ev$data = ev.data) === null || _ev$data === void 0 ? void 0 : _ev$data.presets) window.StyledStackCustomPresets = ev.data.presets;
+					loadCustomPresets(true).then(() => this.requestUpdate());
+				}, "styled_stack_card_presets_updated").then((unsub) => {
+					this._unsubPresets = unsub;
+					this._isSubscribingPresets = false;
+				}).catch(() => {
+					this._isSubscribingPresets = false;
+				});
+			} catch (e) {
+				this._isSubscribingPresets = false;
+			}
+		}
 	}
 	get hass() {
 		return this._hass;
@@ -848,8 +858,9 @@ var StyledStackCardEditor = class extends i {
 	constructor(..._args) {
 		super(..._args);
 		this._selectedCard = 0;
+		this._isSubscribingPresets = false;
 		this._boundPresetsUpdated = () => {
-			loadCustomPresets(true).then(() => this.requestUpdate());
+			this.requestUpdate();
 		};
 		this._computePresetLabel = (schema) => schema.name === "preset" ? "Tema visual" : schema.name;
 		this._computeAngleLabel = (schema) => schema.name === "angle" ? "Ángulo del degradado" : schema.name;
@@ -865,15 +876,23 @@ var StyledStackCardEditor = class extends i {
 	set hass(hass) {
 		const oldHass = this._hass;
 		this._hass = hass;
-		if (hass && !oldHass && hass.connection && !this._unsubPresets) try {
-			hass.connection.subscribeEvents((ev) => {
-				var _ev$data;
-				if ((_ev$data = ev.data) === null || _ev$data === void 0 ? void 0 : _ev$data.presets) window.StyledStackCustomPresets = ev.data.presets;
-				loadCustomPresets(true).then(() => this.requestUpdate());
-			}, "styled_stack_card_presets_updated").then((unsub) => {
-				this._unsubPresets = unsub;
-			});
-		} catch (e) {}
+		if (hass && !oldHass && hass.connection && !this._unsubPresets && !this._isSubscribingPresets) {
+			this._isSubscribingPresets = true;
+			try {
+				hass.connection.subscribeEvents((ev) => {
+					var _ev$data;
+					if ((_ev$data = ev.data) === null || _ev$data === void 0 ? void 0 : _ev$data.presets) window.StyledStackCustomPresets = ev.data.presets;
+					loadCustomPresets(true).then(() => this.requestUpdate());
+				}, "styled_stack_card_presets_updated").then((unsub) => {
+					this._unsubPresets = unsub;
+					this._isSubscribingPresets = false;
+				}).catch(() => {
+					this._isSubscribingPresets = false;
+				});
+			} catch (e) {
+				this._isSubscribingPresets = false;
+			}
+		}
 	}
 	connectedCallback() {
 		super.connectedCallback();
@@ -887,6 +906,7 @@ var StyledStackCardEditor = class extends i {
 			this._unsubPresets();
 			this._unsubPresets = void 0;
 		}
+		this._isSubscribingPresets = false;
 	}
 	set lovelace(lovelace) {
 		this._lovelace = lovelace;

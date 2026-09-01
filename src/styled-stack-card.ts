@@ -19,6 +19,7 @@ export class StyledStackCard extends LitElement {
   private _cards: any[];
   private config!: StyledStackConfig;
   private _unsubPresets?: () => void;
+  private _isSubscribingPresets: boolean = false;
   private _boundPresetsUpdated!: () => void;
 
   static get properties() {
@@ -33,7 +34,7 @@ export class StyledStackCard extends LitElement {
     super();
     this._cards = [];
     this._boundPresetsUpdated = () => {
-      loadCustomPresets(true).then(() => this.requestUpdate());
+      this.requestUpdate();
     };
   }
 
@@ -50,6 +51,7 @@ export class StyledStackCard extends LitElement {
       this._unsubPresets();
       this._unsubPresets = undefined;
     }
+    this._isSubscribingPresets = false;
   }
 
   public static async getConfigElement() {
@@ -84,7 +86,8 @@ export class StyledStackCard extends LitElement {
       });
     }
 
-    if (hass && !oldHass && (hass as any).connection && !this._unsubPresets) {
+    if (hass && !oldHass && (hass as any).connection && !this._unsubPresets && !this._isSubscribingPresets) {
+      this._isSubscribingPresets = true;
       try {
         (hass as any).connection.subscribeEvents((ev: any) => {
           if (ev.data?.presets) {
@@ -93,9 +96,12 @@ export class StyledStackCard extends LitElement {
           loadCustomPresets(true).then(() => this.requestUpdate());
         }, 'styled_stack_card_presets_updated').then((unsub: any) => {
           this._unsubPresets = unsub;
+          this._isSubscribingPresets = false;
+        }).catch(() => {
+          this._isSubscribingPresets = false;
         });
       } catch (e) {
-        // Ignorar si falla la suscripción
+        this._isSubscribingPresets = false;
       }
     }
   }

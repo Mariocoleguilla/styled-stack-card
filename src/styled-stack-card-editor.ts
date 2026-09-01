@@ -47,14 +47,16 @@ export class StyledStackCardEditor extends LitElement {
   }
 
   private _unsubPresets?: () => void;
+  private _isSubscribingPresets: boolean = false;
   private _boundPresetsUpdated = () => {
-    loadCustomPresets(true).then(() => this.requestUpdate());
+    this.requestUpdate();
   };
 
   set hass(hass: any) {
     const oldHass = this._hass;
     this._hass = hass;
-    if (hass && !oldHass && hass.connection && !this._unsubPresets) {
+    if (hass && !oldHass && hass.connection && !this._unsubPresets && !this._isSubscribingPresets) {
+      this._isSubscribingPresets = true;
       try {
         hass.connection.subscribeEvents((ev: any) => {
           if (ev.data?.presets) {
@@ -63,8 +65,13 @@ export class StyledStackCardEditor extends LitElement {
           loadCustomPresets(true).then(() => this.requestUpdate());
         }, "styled_stack_card_presets_updated").then((unsub: any) => {
           this._unsubPresets = unsub;
+          this._isSubscribingPresets = false;
+        }).catch(() => {
+          this._isSubscribingPresets = false;
         });
-      } catch (e) {}
+      } catch (e) {
+        this._isSubscribingPresets = false;
+      }
     }
   }
 
@@ -81,6 +88,7 @@ export class StyledStackCardEditor extends LitElement {
       this._unsubPresets();
       this._unsubPresets = undefined;
     }
+    this._isSubscribingPresets = false;
   }
 
   set lovelace(lovelace: any) {
