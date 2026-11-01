@@ -2,9 +2,10 @@
     "compilerOptions": {
         "target": "es2020",
         "module": "esnext",
-        "moduleResolution": "node",
+        "moduleResolution": "bundler",
         "experimentalDecorators": true,
-        "useDefineForClassFields": false
+        "useDefineForClassFields": false,
+        "skipLibCheck": true
     },
     "include": [
         "src/**/*.ts"
