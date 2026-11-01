@@ -1,0 +1,119 @@
+name: Release
+
+# Cada push a main (salvo cambios solo de documentación) publica una release:
+# calcula la versión, actualiza package.json, regenera dist/, crea el commit
+# "chore(release): vX.Y.Z", la tag y la release de GitHub con el .js adjunto.
+#
+# Versión: a partir de la última tag vX.Y.Z y de los mensajes de commit desde
+# entonces: "feat!:" o "BREAKING CHANGE" -> major, "feat:" -> minor, resto ->
+# patch. Si package.json ya trae una versión mayor (subida a mano), se respeta.
+# Para no publicar un push concreto: "[skip release]" en el mensaje del commit.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: ${{ !contains(github.event.head_commit.message, '[skip release]') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Calcular versión
+        id: version
+        run: |
+          set -euo pipefail
+          LAST_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          LAST=${LAST_TAG#v}
+          RANGE=HEAD
+          if [ -n "$LAST_TAG" ]; then RANGE="$LAST_TAG..HEAD"; else LAST=0.0.0; fi
+
+          PENDING=$(git log "$RANGE" --format=%H --invert-grep --grep='^chore(release):' | wc -l)
+          if [ "$PENDING" -eq 0 ]; then
+            echo "No hay cambios nuevos desde $LAST_TAG."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LOG=$(git log "$RANGE" --format='%s%n%b')
+          IFS=. read -r MA MI PA <<< "$LAST"
+          if grep -qE '^[a-z]+(\([^)]*\))?!:|BREAKING CHANGE' <<< "$LOG"; then
+            MA=$((MA + 1)); MI=0; PA=0
+          elif grep -qE '^feat(\([^)]*\))?:' <<< "$LOG"; then
+            MI=$((MI + 1)); PA=0
+          else
+            PA=$((PA + 1))
+          fi
+          NEXT="$MA.$MI.$PA"
+
+          FILE_VERSION=$(node -p "require('./package.json').version")
+          if [ "$FILE_VERSION" != "$LAST" ] && \
+             [ "$(printf '%s\n%s\n' "$FILE_VERSION" "$NEXT" | sort -V | tail -n1)" = "$FILE_VERSION" ]; then
+            NEXT="$FILE_VERSION"
+          fi
+
+          echo "Última: ${LAST_TAG:-ninguna} -> nueva: v$NEXT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        if: steps.version.outputs.skip == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          npm ci
+          npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm run build
+          test -f dist/styled-stack-card.js
+          ls -lh dist/styled-stack-card.js
+
+      - name: Commit, tag y push
+        if: steps.version.outputs.skip == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json dist/styled-stack-card.js
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): v$VERSION [skip release]"
+          fi
+          # Si entró otro push mientras tanto, nos ponemos encima (se incluye en esta release).
+          git pull --rebase origin main
+          git tag "v$VERSION"
+          git push --atomic origin HEAD:main "refs/tags/v$VERSION"
+
+      - name: Crear release
+        if: steps.version.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/styled-stack-card.js \
+            --title "v$VERSION" \
+            --generate-notes \
+            --verify-tag
