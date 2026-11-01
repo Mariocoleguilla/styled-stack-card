@@ -160,6 +160,8 @@ Copy or cut a card in the editor (or from your dashboard), then click <strong>"P
 <details>
 <summary><strong>How do custom presets work?</strong></summary>
 Install <a href="https://github.com/Mariocoleguilla/styled-stack-card-manager">Styled Stack Card Manager</a>. Presets created there automatically appear in this card's preset dropdown and update in real time — no refresh needed.
+<br><br>
+Live sync works for <strong>every user, including non-admins</strong>, when the integration is version <strong>1.1.0 or newer</strong> (it exposes the <code>styled_stack_card/subscribe_presets</code> WebSocket command). All cards on a page share a single subscription. With an older integration, admins still get live updates and non-admins get the presets on page load and when the browser tab becomes visible again. Without the integration, the built-in presets keep working.
 </details>
 
 ---
