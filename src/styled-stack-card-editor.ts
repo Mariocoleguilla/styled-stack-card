@@ -1,7 +1,37 @@
 import { LitElement, html, css, nothing, CSSResultGroup } from 'lit';
-import { LovelaceCardConfig, getLovelace } from 'custom-card-helpers';
+import { keyed } from 'lit/directives/keyed.js';
+import { live } from 'lit/directives/live.js';
+import type { LovelaceCardConfig } from 'custom-card-helpers';
 import { StyledStackCard } from './styled-stack-card';
-import { loadCustomPresets, getGradientStyle } from './presets';
+import { getGradientStyle, retainPresets, updatePresetsHass, PRESETS_UPDATED_EVENT } from './presets';
+
+/** Equivalente a getLovelace() de custom-card-helpers, sin añadir la librería al bundle. */
+function getLovelace(): any {
+  let root: any = document.querySelector('home-assistant');
+  root = root && root.shadowRoot;
+  root = root && root.querySelector('home-assistant-main');
+  root = root && root.shadowRoot;
+  root = root && root.querySelector('app-drawer-layout partial-panel-resolver, ha-drawer partial-panel-resolver');
+  root = (root && root.shadowRoot) || root;
+  root = root && root.querySelector('ha-panel-lovelace');
+  root = root && root.shadowRoot;
+  root = root && root.querySelector('hui-root');
+  if (root) {
+    const ll = root.lovelace;
+    ll.current_view = root.___curView;
+    return ll;
+  }
+  return null;
+}
+
+function deepEqual(a: any, b: any): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && deepEqual(a[k], b[k]));
+}
 
 const CLIPBOARD_KEY = 'dashboardCardClipboard';
 
@@ -46,49 +76,40 @@ export class StyledStackCardEditor extends LitElement {
     };
   }
 
-  private _unsubPresets?: () => void;
-  private _isSubscribingPresets: boolean = false;
-  private _boundPresetsUpdated = () => {
+  /** Claves para recrear el editor hijo al cambiar de pestaña (como hui-stack-card-editor). */
+  private _keys = new Map<string, string>();
+  /** Cambia con cada cambio estructural (añadir, mover, borrar…) de la lista de tarjetas. */
+  private _cardsGeneration = 0;
+  private _releasePresets?: () => void;
+  private _onPresetsUpdated = () => {
     this.requestUpdate();
   };
 
   set hass(hass: any) {
-    const oldHass = this._hass;
     this._hass = hass;
-    if (hass && !oldHass && hass.connection && !this._unsubPresets && !this._isSubscribingPresets) {
-      this._isSubscribingPresets = true;
-      try {
-        hass.connection.subscribeEvents((ev: any) => {
-          if (ev.data?.presets) {
-            (window as any).StyledStackCustomPresets = ev.data.presets;
-          }
-          loadCustomPresets(true).then(() => this.requestUpdate());
-        }, "styled_stack_card_presets_updated").then((unsub: any) => {
-          this._unsubPresets = unsub;
-          this._isSubscribingPresets = false;
-        }).catch(() => {
-          this._isSubscribingPresets = false;
-        });
-      } catch (e) {
-        this._isSubscribingPresets = false;
-      }
+    if (hass && this.isConnected) {
+      if (!this._releasePresets) this._releasePresets = retainPresets(hass);
+      else updatePresetsHass(hass);
     }
+  }
+
+  get hass(): any {
+    return this._hass;
   }
 
   connectedCallback() {
     super.connectedCallback();
-    loadCustomPresets().then(() => this.requestUpdate());
-    window.addEventListener("styled-stack-card-presets-updated", this._boundPresetsUpdated);
+    window.addEventListener(PRESETS_UPDATED_EVENT, this._onPresetsUpdated);
+    if (this._hass && !this._releasePresets) {
+      this._releasePresets = retainPresets(this._hass);
+    }
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    window.removeEventListener("styled-stack-card-presets-updated", this._boundPresetsUpdated);
-    if (this._unsubPresets) {
-      this._unsubPresets();
-      this._unsubPresets = undefined;
-    }
-    this._isSubscribingPresets = false;
+    window.removeEventListener(PRESETS_UPDATED_EVENT, this._onPresetsUpdated);
+    this._releasePresets?.();
+    this._releasePresets = undefined;
   }
 
   set lovelace(lovelace: any) {
@@ -102,19 +123,34 @@ export class StyledStackCardEditor extends LitElement {
 
 
   public setConfig(config: StyledStackConfig) {
+    const oldCount = this._config?.cards?.length;
     this._config = config ?? ({ type: 'styled-stack-card', cards: [] } as StyledStackConfig);
     const numCards = this._config.cards?.length ?? 0;
+    // HA llama a setConfig tras cada config-changed: no tocamos la pestaña
+    // seleccionada salvo que ya no exista (p. ej. edición en YAML).
+    if (oldCount !== undefined && oldCount !== numCards) {
+      this._structureChanged();
+    }
     if (this._selectedCard > numCards) {
       this._selectedCard = numCards;
     }
-    loadCustomPresets().then(() => this.requestUpdate());
   }
 
   protected async firstUpdated() {
-    loadCustomPresets().then(() => this.requestUpdate());
-    if (StyledStackCard && (StyledStackCard as any).ensureHaEditorElements) {
-      await (StyledStackCard as any).ensureHaEditorElements();
+    await StyledStackCard.ensureHaEditorElements();
+  }
+
+  private _structureChanged() {
+    this._keys.clear();
+    this._cardsGeneration++;
+  }
+
+  private _getKey(index: number): string {
+    const key = `${index}-${this._config.cards?.length ?? 0}`;
+    if (!this._keys.has(key)) {
+      this._keys.set(key, Math.random().toString());
     }
+    return this._keys.get(key)!;
   }
 
   private _updateConfig(newConfig: StyledStackConfig) {
@@ -385,8 +421,21 @@ export class StyledStackCardEditor extends LitElement {
     `;
   }
 
+  // ha-tab-group (Web Awesome) emite `wa-tab-show` con detail.name = panel de la pestaña.
   private _handleSelectedCard(ev: CustomEvent) {
-    this._selectedCard = parseInt(ev.detail.name, 10);
+    // Que no llegue al diálogo de HA ni a otros ha-tab-group antecesores.
+    ev.stopPropagation();
+    if (ev.target !== ev.currentTarget) return;
+    const index = parseInt(ev.detail?.name, 10);
+    const numCards = this._config?.cards?.length ?? 0;
+    if (Number.isNaN(index) || index < 0 || index > numCards) return;
+    if (index !== this._selectedCard) {
+      this._selectedCard = index;
+    }
+  }
+
+  private _stopTabEvent(ev: Event) {
+    ev.stopPropagation();
   }
 
   private _handleCardPicked(ev: CustomEvent) {
@@ -394,16 +443,31 @@ export class StyledStackCardEditor extends LitElement {
     const newCardConfig = ev.detail?.config;
     if (!newCardConfig) return;
     const cards = [...(this._config.cards || []), newCardConfig];
+    this._structureChanged();
     this._updateConfig({ ...this._config, cards });
     this._selectedCard = cards.length - 1;
   }
 
-  private _handleCardConfigChanged(ev: CustomEvent) {
+  /**
+   * `index` y `generation` se capturan al renderizar el editor hijo, así un
+   * config-changed tardío del editor de otra pestaña se aplica a SU tarjeta
+   * (o se descarta si la lista cambió), nunca a la que está seleccionada ahora.
+   */
+  private _handleCardConfigChanged(ev: CustomEvent, index: number, generation: number) {
     ev.stopPropagation();
     if (!this._config.cards) return;
+    if (generation !== this._cardsGeneration) return;
+    if (index < 0 || index >= this._config.cards.length) return;
+    const newCard = ev.detail?.config;
+    if (!newCard || deepEqual(newCard, this._config.cards[index])) return;
     const cards = [...this._config.cards];
-    cards[this._selectedCard] = ev.detail.config;
+    cards[index] = newCard;
     this._updateConfig({ ...this._config, cards });
+  }
+
+  private _handleGUIModeChanged(ev: Event) {
+    // El modo GUI/YAML del editor hijo no es el del diálogo de HA.
+    ev.stopPropagation();
   }
 
   // --- PORTAPAPELES INTERNO ---
@@ -427,6 +491,7 @@ export class StyledStackCardEditor extends LitElement {
     const clipboardCard = this._getClipboardCard();
     if (!clipboardCard) return;
     const cards = [...(this._config.cards || []), clipboardCard];
+    this._structureChanged();
     this._updateConfig({ ...this._config, cards });
     this._selectedCard = cards.length - 1;
     this._showToast(this._hass?.localize?.('ui.common.pasted') ?? 'Pegado');
@@ -459,6 +524,7 @@ export class StyledStackCardEditor extends LitElement {
     if (!this._config.cards) return;
     const cards = [...this._config.cards];
     cards.splice(this._selectedCard, 1);
+    this._structureChanged();
     this._updateConfig({ ...this._config, cards });
     this._selectedCard = Math.max(0, this._selectedCard - 1);
   }
@@ -470,8 +536,14 @@ export class StyledStackCardEditor extends LitElement {
     const cards = [...this._config.cards];
     const [card] = cards.splice(this._selectedCard, 1);
     cards.splice(target, 0, card);
+    this._structureChanged();
     this._updateConfig({ ...this._config, cards });
     this._selectedCard = target;
+  }
+
+  private _cardConfigChangedHandler(index: number) {
+    const generation = this._cardsGeneration;
+    return (ev: CustomEvent) => this._handleCardConfigChanged(ev, index, generation);
   }
 
   render() {
@@ -543,16 +615,19 @@ export class StyledStackCardEditor extends LitElement {
 
         <!-- BARRA DE PESTAÑAS Y NAVEGACIÓN -->
         <div class="toolbar">
-          <ha-tab-group .active=${String(selected)} @tab-changed=${this._handleSelectedCard}>
+          <ha-tab-group
+            @wa-tab-show=${this._handleSelectedCard}
+            @wa-tab-hide=${this._stopTabEvent}
+          >
             ${cards.map(
           (_card, i) => html`
-                <ha-tab-group-tab .active=${selected === i} .name=${String(i)}>
+                <ha-tab-group-tab slot="nav" .panel=${String(i)} .active=${live(selected === i)}>
                   ${i + 1}
                 </ha-tab-group-tab>
               `
         )}
-            <ha-tab-group-tab .active=${isAdding} .name=${String(numCards)}>
-              <ha-icon .path=${mdiPlus}></ha-icon>
+            <ha-tab-group-tab slot="nav" .panel=${String(numCards)} .active=${live(isAdding)}>
+              <ha-svg-icon .path=${mdiPlus}></ha-svg-icon>
             </ha-tab-group-tab>
           </ha-tab-group>
         </div>
@@ -611,12 +686,16 @@ export class StyledStackCardEditor extends LitElement {
                 </div>
 
                 <div id="editor">
-                  <hui-card-element-editor
-                    .hass=${this._hass}
-                    .lovelace=${this._effectiveLovelace}
-                    .value=${cards[selected]}
-                    @config-changed=${this._handleCardConfigChanged}
-                  ></hui-card-element-editor>
+                  ${keyed(
+                    this._getKey(selected),
+                    html`<hui-card-element-editor
+                      .hass=${this._hass}
+                      .lovelace=${this._effectiveLovelace}
+                      .value=${cards[selected]}
+                      @config-changed=${this._cardConfigChangedHandler(selected)}
+                      @GUImode-changed=${this._handleGUIModeChanged}
+                    ></hui-card-element-editor>`
+                  )}
                 </div>
               `
             : nothing}
